@@ -283,8 +283,43 @@ class GeminiFormatter:
             traceback.print_exc()
             return None
 
+    def _build_character_prompt(self, characters: List[dict] = None) -> str:
+        """キャラクター情報からプロンプト用のセクションを構築"""
+        if not characters:
+            return ""
+
+        char_lines = []
+        for c in characters:
+            char_lines.append(f"- {c['name']}：{c['description']}")
+        char_list = "\n".join(char_lines)
+        char_names = "、".join(c['name'] for c in characters)
+
+        return f"""
+【登場キャラクター】
+{char_list}
+
+【キャラクターシナリオのルール】
+1. 各キャラクターのセリフは「【キャラ名】セリフ」の形式で書いてください
+2. キャラクター名タグ（【〇〇】）は行の先頭に付け、セリフ文字数には含めません
+3. 各キャラクターの性格・口調設定を忠実に反映してください
+4. 会話や掛け合いを自然に組み立ててください
+5. ナレーション（キャラ名なしの地の文）も適宜入れてOKです
+6. 使用キャラクター: {char_names}
+
+【良い例】
+【太郎】これ知ってる？
+【太郎】実はこれヤバくて、
+【花子】え、マジ？
+【花子】全然知らなかった。
+【太郎】だよね。
+【太郎】じゃあ教えるけど、
+今回紹介するのは、
+誰でもできる方法です。
+"""
+
     def rewrite_scenario(self, text: str, politeness: str = None, emotion: str = None,
-                         style: str = None, custom_instruction: str = None) -> Optional[str]:
+                         style: str = None, custom_instruction: str = None,
+                         characters: List[dict] = None) -> Optional[str]:
         """
         シナリオ全体の書き直し（内容再構成・表現変更OK）
 
@@ -298,6 +333,7 @@ class GeminiFormatter:
             emotion: 感情（gentle/strong/cool）
             style: 話し方（explanatory/conversational/narrative）
             custom_instruction: 自由指示テキスト（「もっと煽り気味にして」等）
+            characters: キャラクター情報のリスト [{"name": "太郎", "description": "..."}]
 
         Returns:
             書き直し後のテキスト
@@ -336,10 +372,14 @@ class GeminiFormatter:
         if custom_instruction and custom_instruction.strip():
             custom_section = f"\n【追加指示】\n{custom_instruction.strip()}\n"
 
+        # キャラクター指示
+        character_section = self._build_character_prompt(characters)
+
         prompt = f"""あなたはTikTok動画のシナリオライターです。以下のテキストを書き直してください。
 
 {nuance_text}
 {custom_section}
+{character_section}
 
 【書き直しのルール】
 1. 元のテキストのテーマ・主旨は維持してください
@@ -348,18 +388,13 @@ class GeminiFormatter:
 4. 冒頭で注意を引き、最後まで見たくなる展開にしてください
 
 【フォーマットルール】
-1. 1行は最大14文字、できるだけ14文字に近づけてください
-2. 各行は必ず句点（。）または読点（、）で終わらせてください
-3. 文の途中で改行する場合のみ読点（、）を追加してください
-4. 文の終わりは句点（。）で終わらせてください
-5. 読み方がおかしくならない自然な位置で改行してください
-6. 不要な読点は入れないでください
-
-【良い例】
-これ知らないと、
-マジで損します。
-今日紹介するのは、
-誰でもできる方法です。
+1. セリフ部分は「【キャラ名】」の後に続けて書いてください
+2. セリフのテキスト部分は最大14文字（キャラ名タグは文字数に含めない）
+3. 各行は必ず句点（。）または読点（、）で終わらせてください
+4. 文の途中で改行する場合のみ読点（、）を追加してください
+5. 文の終わりは句点（。）で終わらせてください
+6. 読み方がおかしくならない自然な位置で改行してください
+7. 不要な読点は入れないでください
 
 【入力テキスト】
 {text}
@@ -376,6 +411,8 @@ class GeminiFormatter:
                 desc_parts.append(f"感情={emotion}")
             if style:
                 desc_parts.append(f"話し方={style}")
+            if characters:
+                desc_parts.append(f"キャラ={','.join(c['name'] for c in characters)}")
             if custom_instruction:
                 desc_parts.append(f"指示={custom_instruction[:20]}")
             desc = ", ".join(desc_parts) if desc_parts else "デフォルト"
@@ -401,7 +438,8 @@ class GeminiFormatter:
 
     def generate_variations(self, text: str, num_variations: int = 3,
                             politeness: str = None, emotion: str = None,
-                            style: str = None, custom_instruction: str = None) -> Optional[List[str]]:
+                            style: str = None, custom_instruction: str = None,
+                            characters: List[dict] = None) -> Optional[List[str]]:
         """
         複数パターンのシナリオを一括生成
 
@@ -414,6 +452,7 @@ class GeminiFormatter:
             emotion: 感情（gentle/strong/cool）
             style: 話し方（explanatory/conversational/narrative）
             custom_instruction: 自由指示テキスト
+            characters: キャラクター情報のリスト [{"name": "太郎", "description": "..."}]
 
         Returns:
             バリエーションのリスト
@@ -454,10 +493,14 @@ class GeminiFormatter:
         if custom_instruction and custom_instruction.strip():
             custom_section = f"\n【追加指示】\n{custom_instruction.strip()}\n"
 
+        # キャラクター指示
+        character_section = self._build_character_prompt(characters)
+
         prompt = f"""あなたはTikTok動画のシナリオライターです。以下のテキストを{num_variations}パターン書き直してください。
 
 {nuance_text}
 {custom_section}
+{character_section}
 
 【書き直しのルール】
 1. 元のテキストのテーマ・主旨は維持してください
@@ -466,26 +509,30 @@ class GeminiFormatter:
 4. 冒頭で注意を引き、最後まで見たくなる展開にしてください
 
 【フォーマットルール】
-1. 1行は最大14文字、できるだけ14文字に近づけてください
-2. 各行は必ず句点（。）または読点（、）で終わらせてください
-3. 文の途中で改行する場合のみ読点（、）を追加してください
-4. 文の終わりは句点（。）で終わらせてください
-5. 不要な読点は入れないでください
+1. セリフ部分は「【キャラ名】」の後に続けて書いてください
+2. セリフのテキスト部分は最大14文字（キャラ名タグは文字数に含めない）
+3. 各行は必ず句点（。）または読点（、）で終わらせてください
+4. 文の途中で改行する場合のみ読点（、）を追加してください
+5. 文の終わりは句点（。）で終わらせてください
+6. 不要な読点は入れないでください
 
 【出力フォーマット（厳守）】
 各パターンの間に「===VARIATION===」を挿入してください。
 説明や追加コメントは不要です。テキストのみを出力してください。
 
 例（2パターンの場合）：
-これ知らないと、
-マジで損します。
-今日紹介するのは、
-誰でもできる方法です。
+【太郎】これ知ってる？
+【太郎】実はこれヤバくて、
+【花子】え、マジで？
+【太郎】マジマジ。
+【太郎】今日教えるから、
+【花子】お願いします。
 ===VARIATION===
-ちょっと待って。
-これ絶対やって。
-知らないと後悔する、
-簡単な方法があります。
+【花子】ちょっと聞いて。
+【太郎】なに？
+【花子】知らないと損する、
+【花子】方法があるんだけど。
+【太郎】気になる。教えて。
 
 【入力テキスト】
 {text}

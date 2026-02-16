@@ -286,6 +286,35 @@ st.markdown("""
         line-height: 1.8;
         white-space: pre-wrap;
     }
+
+    /* キャラクターカード */
+    .char-card {
+        background: rgba(10, 10, 10, 0.9);
+        border: 2px solid rgba(254, 44, 85, 0.3);
+        border-radius: 12px;
+        padding: 15px;
+        margin: 8px 0;
+    }
+    .char-card:hover {
+        border-color: #fe2c55;
+        box-shadow: 0 0 15px rgba(254, 44, 85, 0.3);
+    }
+    .char-number {
+        color: #fe2c55;
+        font-weight: bold;
+        font-size: 14px;
+    }
+
+    /* マルチセレクト */
+    .stMultiSelect > div > div {
+        background: rgba(10, 10, 10, 0.9) !important;
+        color: #ffffff !important;
+        border: 2px solid rgba(0, 242, 234, 0.5) !important;
+        border-radius: 10px !important;
+    }
+    .stMultiSelect label {
+        color: #ffffff !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -304,6 +333,14 @@ if 'selected_variation' not in st.session_state:
     st.session_state.selected_variation = None
 if 'generated_sns_content' not in st.session_state:
     st.session_state.generated_sns_content = None
+if 'characters' not in st.session_state:
+    st.session_state.characters = [
+        {"name": "", "description": ""},
+        {"name": "", "description": ""},
+        {"name": "", "description": ""},
+        {"name": "", "description": ""},
+        {"name": "", "description": ""},
+    ]
 
 # API設定（折りたたみ式）- タイトルの上に配置
 with st.expander("API設定", expanded=False):
@@ -335,7 +372,7 @@ with st.expander("API設定", expanded=False):
 
 # タイトル
 st.markdown('<h1 translate="no">TikTok Scenario Rewriter</h1>', unsafe_allow_html=True)
-st.markdown("文字起こし → 整形 → **AI書き直し** → SNS生成 → ダウンロード")
+st.markdown("文字起こし → 整形 → キャラ設定 → **AI書き直し** → SNS生成 → ダウンロード")
 
 # APIクライアントの初期化
 gladia = GladiaAPI(gladia_api_key) if gladia_api_key else None
@@ -579,11 +616,53 @@ if st.session_state.formatted_text:
     final_filename = st.text_input("ファイル名（編集可能）", value=st.session_state.filename, key="filename_input")
 
     # ===========================================
-    # セクション3: AI書き直し（メイン機能）
+    # セクション3: キャラクター設定
     # ===========================================
-    st.header("3. AI書き直し")
+    st.header("3. キャラクター設定")
+    st.markdown("最大5人のキャラクターを設定できます。書き直し時に選択したキャラクターがシナリオ内でセリフを話します。")
 
-    st.markdown("シナリオ全体を書き直します。テーマは維持しつつ、表現・構成・順序を自由に変更できます。")
+    for i in range(5):
+        col_name, col_desc = st.columns([1, 3])
+        with col_name:
+            char_name = st.text_input(
+                f"キャラ{i + 1} 名前",
+                value=st.session_state.characters[i]["name"],
+                placeholder="例：太郎",
+                key=f"char_name_{i}"
+            )
+        with col_desc:
+            char_desc = st.text_input(
+                f"キャラ{i + 1} 性格・口調",
+                value=st.session_state.characters[i]["description"],
+                placeholder="例：20代男性、テンション高め、ツッコミ役、タメ口",
+                key=f"char_desc_{i}"
+            )
+        st.session_state.characters[i] = {"name": char_name, "description": char_desc}
+
+    # 設定済みキャラクター一覧
+    defined_characters = [c for c in st.session_state.characters if c["name"].strip()]
+    if defined_characters:
+        st.info(f"設定済みキャラクター: {', '.join(c['name'] for c in defined_characters)}（{len(defined_characters)}人）")
+
+    # ===========================================
+    # セクション4: AI書き直し（メイン機能）
+    # ===========================================
+    st.header("4. AI書き直し")
+
+    st.markdown("シナリオ全体を書き直します。テーマは維持しつつ、選択したキャラクターの会話・説明形式に変換します。")
+
+    # キャラクター選択（設定済みキャラから複数選択）
+    selected_char_names = []
+    if defined_characters:
+        char_name_list = [c["name"] for c in defined_characters]
+        selected_char_names = st.multiselect(
+            "使用するキャラクターを選択（複数可）",
+            options=char_name_list,
+            default=char_name_list,
+            key="selected_characters"
+        )
+    else:
+        st.warning("キャラクターが設定されていません。上のセクションでキャラクターを設定してください。")
 
     # ニュアンス選択
     col_p, col_e, col_s = st.columns(3)
@@ -644,6 +723,8 @@ if st.session_state.formatted_text:
             st.error("API設定でGemini APIキーを入力してください")
         elif not st.session_state.text_editor:
             st.error("テキストが見つかりません")
+        elif not selected_char_names:
+            st.error("使用するキャラクターを1人以上選択してください")
         else:
             # パラメータ準備
             p = politeness if politeness != "指定なし" else None
@@ -651,13 +732,17 @@ if st.session_state.formatted_text:
             s = style if style != "指定なし" else None
             ci = custom_instruction if custom_instruction.strip() else None
 
+            # 選択されたキャラクター情報を構築
+            selected_chars = [c for c in defined_characters if c["name"] in selected_char_names]
+
             if num_variations == 1:
                 # 1パターンの場合は rewrite_scenario を使用
                 with st.spinner("AIがシナリオを書き直し中..."):
                     result = gemini.rewrite_scenario(
                         st.session_state.text_editor,
                         politeness=p, emotion=e, style=s,
-                        custom_instruction=ci
+                        custom_instruction=ci,
+                        characters=selected_chars
                     )
                     if result:
                         st.session_state.rewritten_text = result
@@ -673,7 +758,8 @@ if st.session_state.formatted_text:
                         st.session_state.text_editor,
                         num_variations=num_variations,
                         politeness=p, emotion=e, style=s,
-                        custom_instruction=ci
+                        custom_instruction=ci,
+                        characters=selected_chars
                     )
                     if variations:
                         st.session_state.rewrite_variations = variations
@@ -738,9 +824,9 @@ if st.session_state.formatted_text:
                 )
 
     # ===========================================
-    # セクション4: タイトル・紹介文・ハッシュタグ生成
+    # セクション5: タイトル・紹介文・ハッシュタグ生成
     # ===========================================
-    st.header("4. タイトル・紹介文・ハッシュタグ生成")
+    st.header("5. タイトル・紹介文・ハッシュタグ生成")
 
     if st.button("GENERATE SNS", key="generate_sns_content_btn"):
         if not gemini_api_key:
@@ -763,9 +849,9 @@ if st.session_state.formatted_text:
         st.text_area("タイトル・紹介文・ハッシュタグ", height=400, key="sns_content_editor")
 
         # ===========================================
-        # セクション5: まとめてダウンロード
+        # セクション6: まとめてダウンロード
         # ===========================================
-        st.header("5. まとめてダウンロード")
+        st.header("6. まとめてダウンロード")
 
         # 全テキストをまとめる
         full_text = "【整形テキスト】\n" + formatted_main_text
