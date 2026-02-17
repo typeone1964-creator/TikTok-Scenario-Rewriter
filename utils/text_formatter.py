@@ -290,7 +290,20 @@ class GeminiFormatter:
 
         char_lines = []
         for c in characters:
-            char_lines.append(f"- {c['name']}：{c['description']}")
+            profile_parts = [f"名前: {c['name']}"]
+            if c.get('age'):
+                profile_parts.append(f"年代: {c['age']}")
+            if c.get('gender'):
+                profile_parts.append(f"性別: {c['gender']}")
+            if c.get('appearance'):
+                profile_parts.append(f"見た目: {c['appearance']}")
+            if c.get('atmosphere'):
+                profile_parts.append(f"雰囲気: {c['atmosphere']}")
+            if c.get('background'):
+                profile_parts.append(f"背景: {c['background']}")
+            if c.get('tone'):
+                profile_parts.append(f"口調: {c['tone']}")
+            char_lines.append("- " + "／".join(profile_parts))
         char_list = "\n".join(char_lines)
         char_names = "、".join(c['name'] for c in characters)
 
@@ -301,10 +314,11 @@ class GeminiFormatter:
 【キャラクターシナリオのルール】
 1. 各キャラクターのセリフは「【キャラ名】セリフ」の形式で書いてください
 2. キャラクター名タグ（【〇〇】）は行の先頭に付け、セリフ文字数には含めません
-3. 各キャラクターの性格・口調設定を忠実に反映してください
-4. 会話や掛け合いを自然に組み立ててください
-5. ナレーション（キャラ名なしの地の文）も適宜入れてOKです
-6. 使用キャラクター: {char_names}
+3. 各キャラクターのプロフィール（年代・性別・見た目・雰囲気・背景・口調）を忠実に反映してください
+4. 特に「口調」の設定は最重要です。キャラごとに話し方を明確に区別してください
+5. 会話や掛け合いを自然に組み立ててください
+6. ナレーション（キャラ名なしの地の文）も適宜入れてOKです
+7. 使用キャラクター: {char_names}
 
 【良い例】
 【太郎】これ知ってる？

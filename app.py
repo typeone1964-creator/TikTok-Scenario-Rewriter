@@ -334,13 +334,7 @@ if 'selected_variation' not in st.session_state:
 if 'generated_sns_content' not in st.session_state:
     st.session_state.generated_sns_content = None
 if 'characters' not in st.session_state:
-    st.session_state.characters = [
-        {"name": "", "description": ""},
-        {"name": "", "description": ""},
-        {"name": "", "description": ""},
-        {"name": "", "description": ""},
-        {"name": "", "description": ""},
-    ]
+    st.session_state.characters = []  # 登録済みキャラクターのリスト（最大5人）
 
 # API設定（折りたたみ式）- タイトルの上に配置
 with st.expander("API設定", expanded=False):
@@ -619,30 +613,68 @@ if st.session_state.formatted_text:
     # セクション3: キャラクター設定
     # ===========================================
     st.header("3. キャラクター設定")
-    st.markdown("最大5人のキャラクターを設定できます。書き直し時に選択したキャラクターがシナリオ内でセリフを話します。")
+    st.markdown("最大5人のキャラクターを登録できます。書き直し時に選択したキャラクターがシナリオ内でセリフを話します。")
 
-    for i in range(5):
-        col_name, col_desc = st.columns([1, 3])
-        with col_name:
-            char_name = st.text_input(
-                f"キャラ{i + 1} 名前",
-                value=st.session_state.characters[i]["name"],
-                placeholder="例：太郎",
-                key=f"char_name_{i}"
-            )
-        with col_desc:
-            char_desc = st.text_input(
-                f"キャラ{i + 1} 性格・口調",
-                value=st.session_state.characters[i]["description"],
-                placeholder="例：20代男性、テンション高め、ツッコミ役、タメ口",
-                key=f"char_desc_{i}"
-            )
-        st.session_state.characters[i] = {"name": char_name, "description": char_desc}
+    # --- 登録済みキャラクター表示 ---
+    if st.session_state.characters:
+        st.subheader(f"登録済みキャラクター（{len(st.session_state.characters)}人）")
+        for i, char in enumerate(st.session_state.characters):
+            card_html = f"""<div class="char-card">
+<span class="char-number">#{i + 1}</span>
+<strong style="color: #fe2c55; font-size: 18px; margin-left: 8px;">{char['name']}</strong>
+<span style="color: #888; margin-left: 12px;">{char['gender']} / {char['age']}</span>
+<br><span style="color: #aaa;">見た目:</span> {char['appearance']}
+　<span style="color: #aaa;">雰囲気:</span> {char['atmosphere']}
+<br><span style="color: #aaa;">背景:</span> {char['background']}
+　<span style="color: #aaa;">口調:</span> {char['tone']}
+</div>"""
+            st.markdown(card_html, unsafe_allow_html=True)
+            if st.button(f"削除: {char['name']}", key=f"del_char_{i}"):
+                st.session_state.characters.pop(i)
+                st.rerun()
 
-    # 設定済みキャラクター一覧
-    defined_characters = [c for c in st.session_state.characters if c["name"].strip()]
-    if defined_characters:
-        st.info(f"設定済みキャラクター: {', '.join(c['name'] for c in defined_characters)}（{len(defined_characters)}人）")
+    # --- 新規キャラクター登録フォーム ---
+    if len(st.session_state.characters) < 5:
+        st.subheader("キャラクター登録")
+        col_n, col_a, col_g = st.columns([2, 1, 1])
+        with col_n:
+            new_name = st.text_input("名前", placeholder="例：太郎", key="new_char_name")
+        with col_a:
+            new_age = st.selectbox("年代", ["10代", "20代", "30代", "40代", "50代", "60代以上"], index=1, key="new_char_age")
+        with col_g:
+            new_gender = st.selectbox("性別", ["男性", "女性", "その他"], key="new_char_gender")
+
+        col_ap, col_at = st.columns(2)
+        with col_ap:
+            new_appearance = st.text_input("見た目", placeholder="例：短髪、メガネ、スーツ姿", key="new_char_appearance")
+        with col_at:
+            new_atmosphere = st.text_input("雰囲気", placeholder="例：明るく元気、頼れる兄貴", key="new_char_atmosphere")
+
+        col_bg, col_tn = st.columns(2)
+        with col_bg:
+            new_background = st.text_input("背景", placeholder="例：IT企業の新入社員、趣味はゲーム", key="new_char_background")
+        with col_tn:
+            new_tone = st.text_input("口調", placeholder="例：タメ口、テンション高め、語尾に「っす」", key="new_char_tone")
+
+        if st.button("REGISTER", key="register_char_btn"):
+            if not new_name.strip():
+                st.error("名前を入力してください")
+            elif any(c["name"] == new_name.strip() for c in st.session_state.characters):
+                st.error(f"「{new_name.strip()}」は既に登録されています")
+            else:
+                st.session_state.characters.append({
+                    "name": new_name.strip(),
+                    "age": new_age,
+                    "gender": new_gender,
+                    "appearance": new_appearance.strip(),
+                    "atmosphere": new_atmosphere.strip(),
+                    "background": new_background.strip(),
+                    "tone": new_tone.strip(),
+                })
+                st.success(f"「{new_name.strip()}」を登録しました!（{len(st.session_state.characters)}/5人）")
+                st.rerun()
+    else:
+        st.info("キャラクター登録の上限（5人）に達しています。追加するには既存のキャラクターを削除してください。")
 
     # ===========================================
     # セクション4: AI書き直し（メイン機能）
@@ -651,10 +683,10 @@ if st.session_state.formatted_text:
 
     st.markdown("シナリオ全体を書き直します。テーマは維持しつつ、選択したキャラクターの会話・説明形式に変換します。")
 
-    # キャラクター選択（設定済みキャラから複数選択）
+    # キャラクター選択（登録済みキャラから複数選択）
     selected_char_names = []
-    if defined_characters:
-        char_name_list = [c["name"] for c in defined_characters]
+    if st.session_state.characters:
+        char_name_list = [c["name"] for c in st.session_state.characters]
         selected_char_names = st.multiselect(
             "使用するキャラクターを選択（複数可）",
             options=char_name_list,
@@ -662,7 +694,7 @@ if st.session_state.formatted_text:
             key="selected_characters"
         )
     else:
-        st.warning("キャラクターが設定されていません。上のセクションでキャラクターを設定してください。")
+        st.warning("キャラクターが登録されていません。上のセクションでキャラクターを登録してください。")
 
     # ニュアンス選択
     col_p, col_e, col_s = st.columns(3)
@@ -733,7 +765,7 @@ if st.session_state.formatted_text:
             ci = custom_instruction if custom_instruction.strip() else None
 
             # 選択されたキャラクター情報を構築
-            selected_chars = [c for c in defined_characters if c["name"] in selected_char_names]
+            selected_chars = [c for c in st.session_state.characters if c["name"] in selected_char_names]
 
             if num_variations == 1:
                 # 1パターンの場合は rewrite_scenario を使用
