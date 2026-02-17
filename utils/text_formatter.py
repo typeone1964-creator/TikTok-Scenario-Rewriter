@@ -333,7 +333,8 @@ class GeminiFormatter:
 
     def rewrite_scenario(self, text: str, politeness: str = None, emotion: str = None,
                          style: str = None, custom_instruction: str = None,
-                         characters: List[dict] = None) -> Optional[str]:
+                         characters: List[dict] = None,
+                         lead_templates: str = None) -> Optional[str]:
         """
         シナリオ全体の書き直し（内容再構成・表現変更OK）
 
@@ -348,6 +349,7 @@ class GeminiFormatter:
             style: 話し方（explanatory/conversational/narrative）
             custom_instruction: 自由指示テキスト（「もっと煽り気味にして」等）
             characters: キャラクター情報のリスト [{"name": "太郎", "description": "..."}]
+            lead_templates: 誘導文テンプレート（シナリオ終盤に自然に組み込む）
 
         Returns:
             書き直し後のテキスト
@@ -389,17 +391,33 @@ class GeminiFormatter:
         # キャラクター指示
         character_section = self._build_character_prompt(characters)
 
+        # 誘導文テンプレート
+        lead_section = ""
+        if lead_templates and lead_templates.strip():
+            lead_section = f"""
+【誘導文テンプレート（重要）】
+以下はシナリオの終盤〜締めに自然に組み込む誘導表現の例です。
+そのままコピーせず、シナリオの流れやキャラクターの口調に合わせてアレンジしてください。
+シナリオの最後が「制度の紹介 → 行動を促す」流れになるように構成してください。
+定型文（フォローやリンク誘導）はこの後に別途付加されるので、シナリオ側では書かないでください。
+
+{lead_templates.strip()}
+"""
+
         prompt = f"""あなたはTikTok動画のシナリオライターです。以下のテキストを書き直してください。
 
 {nuance_text}
 {custom_section}
 {character_section}
+{lead_section}
 
 【書き直しのルール】
 1. 元のテキストのテーマ・主旨は維持してください
 2. ただし、表現の変更、内容の追加・削除・順序変更は自由に行ってOKです
 3. TikTok動画として視聴者を引き込む構成にしてください
 4. 冒頭で注意を引き、最後まで見たくなる展開にしてください
+5. シナリオ終盤には、誘導文テンプレートを参考に給付金制度の紹介や行動喚起を自然に組み込んでください
+6. 最後の締めは「詳しく知りたい方は〜」「気になる方は〜」のように、次のアクションにつなげる文で終わってください
 
 【フォーマットルール】
 1. セリフ部分は「【キャラ名】」の後に続けて書いてください
@@ -427,6 +445,8 @@ class GeminiFormatter:
                 desc_parts.append(f"話し方={style}")
             if characters:
                 desc_parts.append(f"キャラ={','.join(c['name'] for c in characters)}")
+            if lead_templates:
+                desc_parts.append("誘導文あり")
             if custom_instruction:
                 desc_parts.append(f"指示={custom_instruction[:20]}")
             desc = ", ".join(desc_parts) if desc_parts else "デフォルト"
@@ -453,7 +473,8 @@ class GeminiFormatter:
     def generate_variations(self, text: str, num_variations: int = 3,
                             politeness: str = None, emotion: str = None,
                             style: str = None, custom_instruction: str = None,
-                            characters: List[dict] = None) -> Optional[List[str]]:
+                            characters: List[dict] = None,
+                            lead_templates: str = None) -> Optional[List[str]]:
         """
         複数パターンのシナリオを一括生成
 
@@ -467,6 +488,7 @@ class GeminiFormatter:
             style: 話し方（explanatory/conversational/narrative）
             custom_instruction: 自由指示テキスト
             characters: キャラクター情報のリスト [{"name": "太郎", "description": "..."}]
+            lead_templates: 誘導文テンプレート（シナリオ終盤に自然に組み込む）
 
         Returns:
             バリエーションのリスト
@@ -510,17 +532,33 @@ class GeminiFormatter:
         # キャラクター指示
         character_section = self._build_character_prompt(characters)
 
+        # 誘導文テンプレート
+        lead_section = ""
+        if lead_templates and lead_templates.strip():
+            lead_section = f"""
+【誘導文テンプレート（重要）】
+以下はシナリオの終盤〜締めに自然に組み込む誘導表現の例です。
+そのままコピーせず、シナリオの流れやキャラクターの口調に合わせてアレンジしてください。
+各パターンの最後が「制度の紹介 → 行動を促す」流れになるように構成してください。
+定型文（フォローやリンク誘導）はこの後に別途付加されるので、シナリオ側では書かないでください。
+
+{lead_templates.strip()}
+"""
+
         prompt = f"""あなたはTikTok動画のシナリオライターです。以下のテキストを{num_variations}パターン書き直してください。
 
 {nuance_text}
 {custom_section}
 {character_section}
+{lead_section}
 
 【書き直しのルール】
 1. 元のテキストのテーマ・主旨は維持してください
 2. 各パターンは異なるアプローチ・切り口で書いてください
 3. TikTok動画として視聴者を引き込む構成にしてください
 4. 冒頭で注意を引き、最後まで見たくなる展開にしてください
+5. 各パターンの終盤には、誘導文テンプレートを参考に給付金制度の紹介や行動喚起を自然に組み込んでください
+6. 最後の締めは「詳しく知りたい方は〜」「気になる方は〜」のように、次のアクションにつなげる文で終わってください
 
 【フォーマットルール】
 1. セリフ部分は「【キャラ名】」の後に続けて書いてください

@@ -335,6 +335,25 @@ if 'generated_sns_content' not in st.session_state:
     st.session_state.generated_sns_content = None
 if 'characters' not in st.session_state:
     st.session_state.characters = []  # 登録済みキャラクターのリスト（最大5人）
+if 'closing_text' not in st.session_state:
+    st.session_state.closing_text = """詳しく知りたい人は、
+このアカウントをフォロー、
+画面のようにタップし、
+リンクから、
+1分でできる無料診断を、
+受けてみてください。"""
+if 'lead_templates' not in st.session_state:
+    st.session_state.lead_templates = """・今の仕事で問題を抱えている人へ。早めの行動があなたを守るかもしれません。退職を考えている人は、退職給付金の活用でお金の問題は解決できる場合があります。最大400万円以上受け取っている人もいる国の制度があります。
+
+・社会保険に1年以上加入していれば最大28ヶ月の給付が可能。平均支給額は450万円以上。これを逃すのはもったいないです。ただ、申請がちょっと難しいのと退職前に準備を始めないといけないのが難点。制度を知らず損してしまう人は本当に多いんです。自分が対象かどうか気になる人はまずはいくらもらえるか確認してみてください。
+
+・退職前に申請すれば400万以上受け取れる給付金制度があるのをご存知ですか。ですが申請方法を知らずに損している人が多数。あなたには損をしてほしくないのでこのアカウントをフォローして教えてとコメントしてください。
+
+・賢く退職する人はみんな制度を味方にしています。400万以上もらえる可能性のある国の制度。しかし申請ミスや期限切れでチャンスを逃す人も多いです。正しい申請方法を知りたい人はこのアカウントをフォローしてプロフのリンクから1分の無料診断を受けてみてください。
+
+・今の生活が不安な方は制度を正しく知ることが大切です。もしあなたが65歳未満なら28ヶ月受給できる給付制度もあります。
+
+・退職後の生活が不安な方へ。"""
 
 # API設定（折りたたみ式）- タイトルの上に配置
 with st.expander("API設定", expanded=False):
@@ -366,7 +385,7 @@ with st.expander("API設定", expanded=False):
 
 # タイトル
 st.markdown('<h1 translate="no">TikTok Scenario Rewriter</h1>', unsafe_allow_html=True)
-st.markdown("文字起こし → 整形 → キャラ設定 → **AI書き直し** → SNS生成 → ダウンロード")
+st.markdown("入力 → 整形 → 誘導文設定 → キャラ設定 → **AI書き直し** → SNS生成 → DL")
 
 # APIクライアントの初期化
 gladia = GladiaAPI(gladia_api_key) if gladia_api_key else None
@@ -610,9 +629,33 @@ if st.session_state.formatted_text:
     final_filename = st.text_input("ファイル名（編集可能）", value=st.session_state.filename, key="filename_input")
 
     # ===========================================
-    # セクション3: キャラクター設定
+    # セクション3: 誘導文・定型文設定
     # ===========================================
-    st.header("3. キャラクター設定")
+    st.header("3. 誘導文・定型文設定")
+    st.markdown("シナリオ末尾に自然につなげる誘導文と、最後に必ず付加する定型文を設定します。")
+
+    lead_templates = st.text_area(
+        "誘導文テンプレート（AIが参考にする表現集）",
+        value=st.session_state.lead_templates,
+        height=300,
+        key="lead_templates_editor",
+        help="AIはこのテンプレートを参考に、シナリオの流れに合った誘導文を自然に組み込みます"
+    )
+    st.session_state.lead_templates = lead_templates
+
+    closing_text = st.text_area(
+        "定型文（シナリオ末尾に必ず付加）",
+        value=st.session_state.closing_text,
+        height=150,
+        key="closing_text_editor",
+        help="この定型文はAI生成後にそのまま末尾に付加されます（AI生成の対象外）"
+    )
+    st.session_state.closing_text = closing_text
+
+    # ===========================================
+    # セクション4: キャラクター設定
+    # ===========================================
+    st.header("4. キャラクター設定")
     st.markdown("最大5人のキャラクターを登録できます。書き直し時に選択したキャラクターがシナリオ内でセリフを話します。")
 
     # --- 登録済みキャラクター表示 ---
@@ -677,9 +720,9 @@ if st.session_state.formatted_text:
         st.info("キャラクター登録の上限（5人）に達しています。追加するには既存のキャラクターを削除してください。")
 
     # ===========================================
-    # セクション4: AI書き直し（メイン機能）
+    # セクション5: AI書き直し（メイン機能）
     # ===========================================
-    st.header("4. AI書き直し")
+    st.header("5. AI書き直し")
 
     st.markdown("シナリオ全体を書き直します。テーマは維持しつつ、選択したキャラクターの会話・説明形式に変換します。")
 
@@ -767,6 +810,11 @@ if st.session_state.formatted_text:
             # 選択されたキャラクター情報を構築
             selected_chars = [c for c in st.session_state.characters if c["name"] in selected_char_names]
 
+            # 誘導文テンプレート
+            lt = st.session_state.lead_templates.strip() if st.session_state.lead_templates.strip() else None
+            # 定型文（末尾付加用）
+            ct = st.session_state.closing_text.strip()
+
             if num_variations == 1:
                 # 1パターンの場合は rewrite_scenario を使用
                 with st.spinner("AIがシナリオを書き直し中..."):
@@ -774,9 +822,13 @@ if st.session_state.formatted_text:
                         st.session_state.text_editor,
                         politeness=p, emotion=e, style=s,
                         custom_instruction=ci,
-                        characters=selected_chars
+                        characters=selected_chars,
+                        lead_templates=lt
                     )
                     if result:
+                        # 定型文を末尾に付加
+                        if ct:
+                            result = result.rstrip() + "\n" + ct
                         st.session_state.rewritten_text = result
                         st.session_state.rewrite_variations = None
                         st.session_state.selected_variation = None
@@ -791,9 +843,13 @@ if st.session_state.formatted_text:
                         num_variations=num_variations,
                         politeness=p, emotion=e, style=s,
                         custom_instruction=ci,
-                        characters=selected_chars
+                        characters=selected_chars,
+                        lead_templates=lt
                     )
                     if variations:
+                        # 各パターンに定型文を末尾付加
+                        if ct:
+                            variations = [v.rstrip() + "\n" + ct for v in variations]
                         st.session_state.rewrite_variations = variations
                         st.session_state.rewritten_text = None
                         st.session_state.selected_variation = None
@@ -856,9 +912,9 @@ if st.session_state.formatted_text:
                 )
 
     # ===========================================
-    # セクション5: タイトル・紹介文・ハッシュタグ生成
+    # セクション6: タイトル・紹介文・ハッシュタグ生成
     # ===========================================
-    st.header("5. タイトル・紹介文・ハッシュタグ生成")
+    st.header("6. タイトル・紹介文・ハッシュタグ生成")
 
     if st.button("GENERATE SNS", key="generate_sns_content_btn"):
         if not gemini_api_key:
@@ -881,9 +937,9 @@ if st.session_state.formatted_text:
         st.text_area("タイトル・紹介文・ハッシュタグ", height=400, key="sns_content_editor")
 
         # ===========================================
-        # セクション6: まとめてダウンロード
+        # セクション7: まとめてダウンロード
         # ===========================================
-        st.header("6. まとめてダウンロード")
+        st.header("7. まとめてダウンロード")
 
         # 全テキストをまとめる
         full_text = "【整形テキスト】\n" + formatted_main_text
