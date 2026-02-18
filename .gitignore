@@ -46,3 +46,7 @@ Thumbs.db
 *.tmp
 temp/
 output/
+
+# User data
+characters.json
+templates.json

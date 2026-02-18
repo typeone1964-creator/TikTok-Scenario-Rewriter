@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import json
 import tempfile
 from dotenv import load_dotenv
 from utils.transcription import GladiaAPI
@@ -7,6 +8,45 @@ from utils.text_formatter import GeminiFormatter
 
 # 環境変数を読み込み
 load_dotenv()
+
+# 保存ファイルパス
+CHARACTERS_FILE = os.path.join(os.path.dirname(__file__), "characters.json")
+TEMPLATES_FILE = os.path.join(os.path.dirname(__file__), "templates.json")
+
+
+def load_characters():
+    """JSONファイルからキャラクターを読み込む"""
+    if os.path.exists(CHARACTERS_FILE):
+        try:
+            with open(CHARACTERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return []
+    return []
+
+
+def save_characters(characters):
+    """キャラクターをJSONファイルに保存"""
+    with open(CHARACTERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(characters, f, ensure_ascii=False, indent=2)
+
+
+def load_templates():
+    """JSONファイルから誘導文・定型文を読み込む"""
+    if os.path.exists(TEMPLATES_FILE):
+        try:
+            with open(TEMPLATES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+    return None
+
+
+def save_templates(lead_templates, closing_text):
+    """誘導文・定型文をJSONファイルに保存"""
+    with open(TEMPLATES_FILE, "w", encoding="utf-8") as f:
+        json.dump({"lead_templates": lead_templates, "closing_text": closing_text}, f, ensure_ascii=False, indent=2)
+
 
 # ページ設定
 st.set_page_config(
@@ -99,6 +139,7 @@ st.markdown("""
     .stButton button,
     .stDownloadButton > button,
     .stDownloadButton button,
+    [data-testid="stFormSubmitButton"] button,
     button[kind="primary"] {
         background: #000000 !important;
         color: white !important;
@@ -125,6 +166,7 @@ st.markdown("""
     .stButton button:hover:not(:disabled),
     .stDownloadButton > button:hover,
     .stDownloadButton button:hover,
+    [data-testid="stFormSubmitButton"] button:hover,
     button[kind="primary"]:hover {
         background: #1a1a1a !important;
         border: 3px solid #00f2ea !important;
@@ -147,6 +189,12 @@ st.markdown("""
         padding: 10px !important;
         font-size: 14px !important;
         line-height: 1.6 !important;
+    }
+
+    /* プレースホルダーの色 */
+    .stTextArea textarea::placeholder,
+    .stTextInput input::placeholder {
+        color: rgba(0, 242, 234, 0.6) !important;
     }
 
     /* テキストインプット */
@@ -299,10 +347,36 @@ st.markdown("""
         border-color: #fe2c55;
         box-shadow: 0 0 15px rgba(254, 44, 85, 0.3);
     }
+    .char-card-protagonist {
+        background: rgba(10, 10, 10, 0.9);
+        border: 2px solid rgba(0, 242, 234, 0.5);
+        border-radius: 12px;
+        padding: 15px;
+        margin: 8px 0;
+        box-shadow: 0 0 10px rgba(0, 242, 234, 0.2);
+    }
     .char-number {
         color: #fe2c55;
         font-weight: bold;
         font-size: 14px;
+    }
+    .role-badge-protagonist {
+        background: #00f2ea;
+        color: #000;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-left: 8px;
+    }
+    .role-badge-questioner {
+        background: #fe2c55;
+        color: #fff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-left: 8px;
     }
 
     /* マルチセレクト */
@@ -331,19 +405,29 @@ if 'rewrite_variations' not in st.session_state:
     st.session_state.rewrite_variations = None
 if 'selected_variation' not in st.session_state:
     st.session_state.selected_variation = None
+if 'adopted_scenario' not in st.session_state:
+    st.session_state.adopted_scenario = None
 if 'generated_sns_content' not in st.session_state:
     st.session_state.generated_sns_content = None
 if 'characters' not in st.session_state:
-    st.session_state.characters = []  # 登録済みキャラクターのリスト（最大5人）
-if 'closing_text' not in st.session_state:
-    st.session_state.closing_text = """詳しく知りたい人は、
+    st.session_state.characters = load_characters()  # JSONファイルから読み込み
+if 'closing_text' not in st.session_state or 'lead_templates' not in st.session_state:
+    saved_templates = load_templates()
+    if saved_templates:
+        if 'closing_text' not in st.session_state:
+            st.session_state.closing_text = saved_templates.get("closing_text", "")
+        if 'lead_templates' not in st.session_state:
+            st.session_state.lead_templates = saved_templates.get("lead_templates", "")
+    else:
+        if 'closing_text' not in st.session_state:
+            st.session_state.closing_text = """詳しく知りたい人は、
 このアカウントをフォロー、
 画面のようにタップし、
 リンクから、
 1分でできる無料診断を、
 受けてみてください。"""
-if 'lead_templates' not in st.session_state:
-    st.session_state.lead_templates = """・今の仕事で問題を抱えている人へ。早めの行動があなたを守るかもしれません。退職を考えている人は、退職給付金の活用でお金の問題は解決できる場合があります。最大400万円以上受け取っている人もいる国の制度があります。
+        if 'lead_templates' not in st.session_state:
+            st.session_state.lead_templates = """・今の仕事で問題を抱えている人へ。早めの行動があなたを守るかもしれません。退職を考えている人は、退職給付金の活用でお金の問題は解決できる場合があります。最大400万円以上受け取っている人もいる国の制度があります。
 
 ・社会保険に1年以上加入していれば最大28ヶ月の給付が可能。平均支給額は450万円以上。これを逃すのはもったいないです。ただ、申請がちょっと難しいのと退職前に準備を始めないといけないのが難点。制度を知らず損してしまう人は本当に多いんです。自分が対象かどうか気になる人はまずはいくらもらえるか確認してみてください。
 
@@ -353,7 +437,11 @@ if 'lead_templates' not in st.session_state:
 
 ・今の生活が不安な方は制度を正しく知ることが大切です。もしあなたが65歳未満なら28ヶ月受給できる給付制度もあります。
 
-・退職後の生活が不安な方へ。"""
+・退職後の生活が不安な方へ。
+
+・「自分はどれに当てはまりそうか」「退職前に何をしておくべきか」を知りたい場合は。
+
+・「次が決まっていないのにお金がない」という不安は、焦りを生み、ブラック企業への誤入社を招くリスクがあります。しかし、会社を辞めた後に使える国の公的制度をフル活用すれば、数ヶ月から1年は生活費の心配を減らすことが可能です。経済的な余裕は、精神的な「盾」となります。目先の生活に追われず、じっくり会社を見極める時間を確保することで、変な会社に捕まらずに納得のいく再就職を目指せます。"""
 
 # API設定（折りたたみ式）- タイトルの上に配置
 with st.expander("API設定", expanded=False):
@@ -385,16 +473,98 @@ with st.expander("API設定", expanded=False):
 
 # タイトル
 st.markdown('<h1 translate="no">TikTok Scenario Rewriter</h1>', unsafe_allow_html=True)
-st.markdown("入力 → 整形 → 誘導文設定 → キャラ設定 → **AI書き直し** → SNS生成 → DL")
+st.markdown("キャラ設定 → 入力 → 整形 → 誘導文設定 → **AI書き直し** → SNS生成 → DL")
 
 # APIクライアントの初期化
 gladia = GladiaAPI(gladia_api_key) if gladia_api_key else None
 gemini = GeminiFormatter(gemini_api_key) if gemini_api_key else None
 
 # ===========================================
-# セクション1: 入力ソース選択
+# セクション1: キャラクター設定
 # ===========================================
-st.header("1. 入力ソース選択")
+st.header("1. キャラクター設定")
+st.markdown("最大5人のキャラクターを登録できます。**最初に登録した人物が回答者（主人公）**になります。2人目以降は質問者です。")
+
+# --- 登録済みキャラクター表示 ---
+if st.session_state.characters:
+    st.subheader(f"登録済みキャラクター（{len(st.session_state.characters)}人）")
+    for i, char in enumerate(st.session_state.characters):
+        is_protagonist = (i == 0)
+        if is_protagonist:
+            role_badge = '<span class="role-badge-protagonist">回答者・主人公</span>'
+            card_class = "char-card-protagonist"
+        else:
+            role_badge = '<span class="role-badge-questioner">質問者</span>'
+            card_class = "char-card"
+
+        card_html = f"""<div class="{card_class}">
+<span class="char-number">#{i + 1}</span>
+<strong style="color: {'#00f2ea' if is_protagonist else '#fe2c55'}; font-size: 18px; margin-left: 8px;">{char['name']}</strong>
+{role_badge}
+<span style="color: #888; margin-left: 12px;">{char['gender']} / {char['age']}</span>
+<br><span style="color: #aaa;">見た目:</span> {char['appearance']}
+　<span style="color: #aaa;">雰囲気:</span> {char['atmosphere']}
+<br><span style="color: #aaa;">背景:</span> {char['background']}
+　<span style="color: #aaa;">口調:</span> {char['tone']}
+</div>"""
+        st.markdown(card_html, unsafe_allow_html=True)
+        if st.button(f"削除: {char['name']}", key=f"del_char_{i}"):
+            st.session_state.characters.pop(i)
+            save_characters(st.session_state.characters)
+            st.rerun()
+
+# --- 新規キャラクター登録フォーム ---
+if len(st.session_state.characters) < 5:
+    role_label = "回答者（主人公）" if len(st.session_state.characters) == 0 else "質問者"
+    st.subheader(f"キャラクター登録（次の登録は「{role_label}」になります）")
+
+    with st.form("char_register_form", clear_on_submit=True):
+        col_n, col_a, col_g = st.columns([2, 1, 1])
+        with col_n:
+            new_name = st.text_input("名前", placeholder="例：太郎")
+        with col_a:
+            new_age = st.selectbox("年代", ["10代", "20代", "30代", "40代", "50代", "60代以上"], index=1)
+        with col_g:
+            new_gender = st.selectbox("性別", ["男性", "女性", "その他"])
+
+        col_ap, col_at = st.columns(2)
+        with col_ap:
+            new_appearance = st.text_input("見た目", placeholder="例：短髪、メガネ、スーツ姿")
+        with col_at:
+            new_atmosphere = st.text_input("雰囲気", placeholder="例：明るく元気、頼れる兄貴")
+
+        col_bg, col_tn = st.columns(2)
+        with col_bg:
+            new_background = st.text_input("背景", placeholder="例：IT企業の新入社員、趣味はゲーム")
+        with col_tn:
+            new_tone = st.text_input("口調", placeholder="例：タメ口、テンション高め、語尾に「っす」")
+
+        submitted = st.form_submit_button("REGISTER")
+
+    if submitted:
+        if not new_name.strip():
+            st.error("名前を入力してください")
+        elif any(c["name"] == new_name.strip() for c in st.session_state.characters):
+            st.error(f"「{new_name.strip()}」は既に登録されています")
+        else:
+            st.session_state.characters.append({
+                "name": new_name.strip(),
+                "age": new_age,
+                "gender": new_gender,
+                "appearance": new_appearance.strip(),
+                "atmosphere": new_atmosphere.strip(),
+                "background": new_background.strip(),
+                "tone": new_tone.strip(),
+            })
+            save_characters(st.session_state.characters)
+            st.rerun()
+else:
+    st.info("キャラクター登録の上限（5人）に達しています。追加するには既存のキャラクターを削除してください。")
+
+# ===========================================
+# セクション2: 入力ソース選択
+# ===========================================
+st.header("2. 入力ソース選択")
 
 tab1, tab2, tab3 = st.tabs(["動画から生成", "ファイルから生成", "テキスト入力"])
 
@@ -465,29 +635,17 @@ with tab2:
 
                 if raw_text.strip():
                     st.session_state.transcribed_text = raw_text
-                    progress_bar.progress(50)
+                    progress_bar.progress(40)
 
-                    # テキスト整形：改行ごとに句読点を追加
-                    lines = raw_text.strip().split('\n')
-                    formatted_lines = []
-                    punctuation = ('。', '、', '！', '？', '!', '?', '．', '，')
-
-                    for i, line in enumerate(lines):
-                        line = line.strip()
-                        if not line:
-                            continue
-                        # 既に句読点で終わっている場合はそのまま
-                        if line.endswith(punctuation):
-                            formatted_lines.append(line)
+                    # Geminiで句読点追加＋句点改行の整形
+                    if gemini:
+                        formatted_text = gemini.format_text(raw_text)
+                        if formatted_text:
+                            st.session_state.formatted_text = formatted_text
                         else:
-                            # 最後の行は「。」、それ以外は「、」
-                            if i == len(lines) - 1:
-                                formatted_lines.append(line + '。')
-                            else:
-                                formatted_lines.append(line + '、')
-
-                    formatted_text = '\n'.join(formatted_lines)
-                    st.session_state.formatted_text = formatted_text
+                            st.session_state.formatted_text = raw_text
+                    else:
+                        st.session_state.formatted_text = raw_text
                     progress_bar.progress(80)
 
                     filename = os.path.splitext(text_file.name)[0]
@@ -503,107 +661,40 @@ with tab3:
     st.subheader("テキストを直接入力")
 
     direct_text = st.text_area(
-        "テキストを貼り付けてください（自動整形されます）",
+        "テキストを貼り付けてください（そのまま整形済みテキストとして使用します）",
         height=250,
-        placeholder="ここにテキストを貼り付け...\n\n例：\nこれもちょっとした誤解で\n落とし穴がいっぱいあるのです",
+        placeholder="ここにテキストを貼り付け...\n\n例：\n大暴露、退職前にもらえる給付金11選。\n国はゼニゲバなので、200万円以上得する情報は一切教えてくれません。",
         key="direct_text_input"
     )
 
     if st.button("START", key="direct_text_btn"):
         if direct_text.strip():
-            progress_bar = st.progress(0)
-            progress_bar.progress(20)
-
-            # テキスト整形：改行ごとに句読点を追加
-            lines = direct_text.strip().split('\n')
-            formatted_lines = []
-            punctuation = ('。', '、', '！', '？', '!', '?', '．', '，')
-
-            for i, line in enumerate(lines):
-                line = line.strip()
-                if not line:
-                    continue
-                if line.endswith(punctuation):
-                    formatted_lines.append(line)
-                else:
-                    if i == len(lines) - 1:
-                        formatted_lines.append(line + '。')
-                    else:
-                        formatted_lines.append(line + '、')
-
-            formatted_text = '\n'.join(formatted_lines)
-            st.session_state.formatted_text = formatted_text
             st.session_state.transcribed_text = direct_text
-            progress_bar.progress(50)
+            st.session_state.formatted_text = direct_text
 
             # ファイル名生成
             if gemini:
-                # Gemini APIでファイル名を生成
-                filename = gemini.generate_filename(formatted_text)
+                filename = gemini.generate_filename(direct_text)
                 st.session_state.filename = filename or "output"
             else:
-                # テキストの最初の行から自動生成（句読点除去、最大20文字）
-                first_line = formatted_lines[0] if formatted_lines else "output"
-                clean_name = first_line.replace('、', '').replace('。', '').replace('！', '').replace('？', '')
-                st.session_state.filename = clean_name[:20] if len(clean_name) > 20 else clean_name
+                clean = direct_text.strip().replace('\n', '')[:20]
+                st.session_state.filename = clean if clean else "output"
 
-            progress_bar.progress(100)
             st.success("Complete!")
         else:
             st.error("テキストを入力してください")
 
 # ===========================================
-# セクション2: 整形済みテキスト表示・編集
+# セクション3: 整形済みテキスト表示・編集
 # ===========================================
 if st.session_state.formatted_text:
-    st.header("2. テキスト編集")
+    st.header("3. テキスト編集")
 
     if "text_editor" not in st.session_state:
         st.session_state.text_editor = st.session_state.formatted_text
 
     if "filename" not in st.session_state or not st.session_state.filename:
         st.session_state.filename = "output"
-
-    # テキストダウンロード用のフォーマット関数
-    def format_text_for_download(text: str, target_length: int = 14) -> str:
-        lines = text.split('\n')
-        new_lines = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            chunks = []
-            current_chunk = ""
-            for char in line:
-                if char in ['。', '、']:
-                    if current_chunk:
-                        chunks.append(current_chunk)
-                        current_chunk = ""
-                else:
-                    current_chunk += char
-            if current_chunk:
-                chunks.append(current_chunk)
-
-            current_line = ""
-            for chunk in chunks:
-                chunk = chunk.strip()
-                if not chunk:
-                    continue
-                if not current_line:
-                    current_line = chunk
-                    continue
-                combined_len = len(current_line + chunk)
-                if combined_len > target_length + 4:
-                    new_lines.append(current_line)
-                    current_line = chunk
-                elif abs(target_length - combined_len) <= abs(target_length - len(current_line)):
-                    current_line += chunk
-                else:
-                    new_lines.append(current_line)
-                    current_line = chunk
-            if current_line:
-                new_lines.append(current_line)
-        return '\n'.join(new_lines)
 
     st.subheader("整形済みテキスト")
     # text_areaの値を明示的に取得して保存
@@ -616,10 +707,9 @@ if st.session_state.formatted_text:
     # 編集されたテキストをセッションに保存
     st.session_state.text_editor = current_text
 
-    formatted_main_text = format_text_for_download(current_text)
     st.download_button(
         label="DOWNLOAD TEXT",
-        data=formatted_main_text,
+        data=current_text,
         file_name=f"{st.session_state.filename}.txt",
         mime="text/plain",
         key="download_text"
@@ -629,9 +719,9 @@ if st.session_state.formatted_text:
     final_filename = st.text_input("ファイル名（編集可能）", value=st.session_state.filename, key="filename_input")
 
     # ===========================================
-    # セクション3: 誘導文・定型文設定
+    # セクション4: 誘導文・定型文設定
     # ===========================================
-    st.header("3. 誘導文・定型文設定")
+    st.header("4. 誘導文・定型文設定")
     st.markdown("シナリオ末尾に自然につなげる誘導文と、最後に必ず付加する定型文を設定します。")
 
     lead_templates = st.text_area(
@@ -652,92 +742,38 @@ if st.session_state.formatted_text:
     )
     st.session_state.closing_text = closing_text
 
-    # ===========================================
-    # セクション4: キャラクター設定
-    # ===========================================
-    st.header("4. キャラクター設定")
-    st.markdown("最大5人のキャラクターを登録できます。書き直し時に選択したキャラクターがシナリオ内でセリフを話します。")
-
-    # --- 登録済みキャラクター表示 ---
-    if st.session_state.characters:
-        st.subheader(f"登録済みキャラクター（{len(st.session_state.characters)}人）")
-        for i, char in enumerate(st.session_state.characters):
-            card_html = f"""<div class="char-card">
-<span class="char-number">#{i + 1}</span>
-<strong style="color: #fe2c55; font-size: 18px; margin-left: 8px;">{char['name']}</strong>
-<span style="color: #888; margin-left: 12px;">{char['gender']} / {char['age']}</span>
-<br><span style="color: #aaa;">見た目:</span> {char['appearance']}
-　<span style="color: #aaa;">雰囲気:</span> {char['atmosphere']}
-<br><span style="color: #aaa;">背景:</span> {char['background']}
-　<span style="color: #aaa;">口調:</span> {char['tone']}
-</div>"""
-            st.markdown(card_html, unsafe_allow_html=True)
-            if st.button(f"削除: {char['name']}", key=f"del_char_{i}"):
-                st.session_state.characters.pop(i)
-                st.rerun()
-
-    # --- 新規キャラクター登録フォーム ---
-    if len(st.session_state.characters) < 5:
-        st.subheader("キャラクター登録")
-        col_n, col_a, col_g = st.columns([2, 1, 1])
-        with col_n:
-            new_name = st.text_input("名前", placeholder="例：太郎", key="new_char_name")
-        with col_a:
-            new_age = st.selectbox("年代", ["10代", "20代", "30代", "40代", "50代", "60代以上"], index=1, key="new_char_age")
-        with col_g:
-            new_gender = st.selectbox("性別", ["男性", "女性", "その他"], key="new_char_gender")
-
-        col_ap, col_at = st.columns(2)
-        with col_ap:
-            new_appearance = st.text_input("見た目", placeholder="例：短髪、メガネ、スーツ姿", key="new_char_appearance")
-        with col_at:
-            new_atmosphere = st.text_input("雰囲気", placeholder="例：明るく元気、頼れる兄貴", key="new_char_atmosphere")
-
-        col_bg, col_tn = st.columns(2)
-        with col_bg:
-            new_background = st.text_input("背景", placeholder="例：IT企業の新入社員、趣味はゲーム", key="new_char_background")
-        with col_tn:
-            new_tone = st.text_input("口調", placeholder="例：タメ口、テンション高め、語尾に「っす」", key="new_char_tone")
-
-        if st.button("REGISTER", key="register_char_btn"):
-            if not new_name.strip():
-                st.error("名前を入力してください")
-            elif any(c["name"] == new_name.strip() for c in st.session_state.characters):
-                st.error(f"「{new_name.strip()}」は既に登録されています")
-            else:
-                st.session_state.characters.append({
-                    "name": new_name.strip(),
-                    "age": new_age,
-                    "gender": new_gender,
-                    "appearance": new_appearance.strip(),
-                    "atmosphere": new_atmosphere.strip(),
-                    "background": new_background.strip(),
-                    "tone": new_tone.strip(),
-                })
-                st.success(f"「{new_name.strip()}」を登録しました!（{len(st.session_state.characters)}/5人）")
-                st.rerun()
-    else:
-        st.info("キャラクター登録の上限（5人）に達しています。追加するには既存のキャラクターを削除してください。")
+    # 変更があればファイルに保存
+    save_templates(lead_templates, closing_text)
 
     # ===========================================
     # セクション5: AI書き直し（メイン機能）
     # ===========================================
     st.header("5. AI書き直し")
 
-    st.markdown("シナリオ全体を書き直します。テーマは維持しつつ、選択したキャラクターの会話・説明形式に変換します。")
+    st.markdown("シナリオ全体を書き直します。テーマは維持しつつ、キャラクターの会話・説明形式に変換します。")
 
-    # キャラクター選択（登録済みキャラから複数選択）
-    selected_char_names = []
+    # キャラクター選択（役割システム）
+    selected_chars_for_rewrite = []
     if st.session_state.characters:
-        char_name_list = [c["name"] for c in st.session_state.characters]
-        selected_char_names = st.multiselect(
-            "使用するキャラクターを選択（複数可）",
-            options=char_name_list,
-            default=char_name_list,
-            key="selected_characters"
-        )
+        protagonist = st.session_state.characters[0]
+        st.markdown(f'**回答者（主人公）**: <span style="color: #00f2ea; font-weight: bold;">{protagonist["name"]}</span> - 常に参加（固定）', unsafe_allow_html=True)
+
+        # 質問者の選択（2人目以降）
+        if len(st.session_state.characters) > 1:
+            questioner_names = [c["name"] for c in st.session_state.characters[1:]]
+            selected_questioner_names = st.multiselect(
+                "質問者を選択（複数可 / 選択しない場合は主人公の1人語り）",
+                options=questioner_names,
+                default=questioner_names,
+                key="selected_questioners"
+            )
+            # 主人公 + 選択された質問者
+            selected_chars_for_rewrite = [protagonist] + [c for c in st.session_state.characters[1:] if c["name"] in selected_questioner_names]
+        else:
+            st.info(f"{protagonist['name']} の1人語り（モノローグ）モードになります。")
+            selected_chars_for_rewrite = [protagonist]
     else:
-        st.warning("キャラクターが登録されていません。上のセクションでキャラクターを登録してください。")
+        st.warning("キャラクターが登録されていません。セクション1でキャラクターを登録してください。")
 
     # ニュアンス選択
     col_p, col_e, col_s = st.columns(3)
@@ -782,15 +818,28 @@ if st.session_state.formatted_text:
         )
 
     # 自由指示テキスト
+    st.markdown("""**自由指示（オプション）** — 例：「もっと煽りを強くして」「50代男性向けに」「失業手当を中心に」「テロップ多めで」「ナミの出番を増やして」「最後にもっと危機感を出して」""")
     custom_instruction = st.text_area(
         "自由指示（オプション）",
-        placeholder="例：もっと煽り気味にして / 冒頭で問いかけて / 数字を入れて具体的に / Z世代向けに",
-        height=80,
-        key="custom_instruction"
+        placeholder="AIへの追加指示を入力...",
+        height=100,
+        key="custom_instruction",
+        label_visibility="collapsed"
     )
 
-    # パターン数選択
-    num_variations = st.slider("生成パターン数", min_value=1, max_value=3, value=1, key="num_variations")
+    # ページ数・パターン数を横並び
+    col_pages, col_vars = st.columns(2)
+    with col_pages:
+        num_pages = st.slider("ページ数", min_value=5, max_value=40, value=15, key="num_pages",
+                              help="漫画動画のページ数")
+    with col_vars:
+        num_variations = st.selectbox(
+            "比較パターン数",
+            options=[1, 2, 3],
+            format_func=lambda x: {1: "1パターン", 2: "2パターン（比較用）", 3: "3パターン（比較用）"}.get(x, str(x)),
+            key="num_variations",
+            help="異なる切り口でシナリオを同時生成し、比較して選べます"
+        )
 
     # 書き直しボタン
     if st.button("REWRITE", key="rewrite_btn"):
@@ -798,17 +847,14 @@ if st.session_state.formatted_text:
             st.error("API設定でGemini APIキーを入力してください")
         elif not st.session_state.text_editor:
             st.error("テキストが見つかりません")
-        elif not selected_char_names:
-            st.error("使用するキャラクターを1人以上選択してください")
+        elif not selected_chars_for_rewrite:
+            st.error("キャラクターを登録してください")
         else:
             # パラメータ準備
             p = politeness if politeness != "指定なし" else None
             e = emotion if emotion != "指定なし" else None
             s = style if style != "指定なし" else None
             ci = custom_instruction if custom_instruction.strip() else None
-
-            # 選択されたキャラクター情報を構築
-            selected_chars = [c for c in st.session_state.characters if c["name"] in selected_char_names]
 
             # 誘導文テンプレート
             lt = st.session_state.lead_templates.strip() if st.session_state.lead_templates.strip() else None
@@ -822,17 +868,22 @@ if st.session_state.formatted_text:
                         st.session_state.text_editor,
                         politeness=p, emotion=e, style=s,
                         custom_instruction=ci,
-                        characters=selected_chars,
-                        lead_templates=lt
+                        characters=selected_chars_for_rewrite,
+                        lead_templates=lt,
+                        num_pages=num_pages
                     )
                     if result:
                         # 定型文を末尾に付加
                         if ct:
                             result = result.rstrip() + "\n" + ct
+                        # 前回のウィジェット状態をクリア
+                        for k in ["rewritten_editor"]:
+                            if k in st.session_state:
+                                del st.session_state[k]
                         st.session_state.rewritten_text = result
                         st.session_state.rewrite_variations = None
                         st.session_state.selected_variation = None
-                        st.success("書き直し完了!")
+                        st.rerun()
                     else:
                         st.error("書き直しに失敗しました")
             else:
@@ -843,8 +894,9 @@ if st.session_state.formatted_text:
                         num_variations=num_variations,
                         politeness=p, emotion=e, style=s,
                         custom_instruction=ci,
-                        characters=selected_chars,
-                        lead_templates=lt
+                        characters=selected_chars_for_rewrite,
+                        lead_templates=lt,
+                        num_pages=num_pages
                     )
                     if variations:
                         # 各パターンに定型文を末尾付加
@@ -853,7 +905,7 @@ if st.session_state.formatted_text:
                         st.session_state.rewrite_variations = variations
                         st.session_state.rewritten_text = None
                         st.session_state.selected_variation = None
-                        st.success(f"{len(variations)}パターン生成完了!")
+                        st.rerun()
                     else:
                         st.error("バリエーション生成に失敗しました")
 
@@ -868,48 +920,77 @@ if st.session_state.formatted_text:
         )
         st.session_state.rewritten_text = rewritten_edit
 
-        col_apply, col_download = st.columns(2)
+        col_apply, col_download, col_clear = st.columns(3)
         with col_apply:
             if st.button("この結果を採用", key="apply_rewrite"):
+                st.session_state.adopted_scenario = st.session_state.rewritten_text
                 st.session_state.text_editor = st.session_state.rewritten_text
                 st.session_state.formatted_text = st.session_state.rewritten_text
-                st.success("採用しました! テキスト編集欄に反映されます。")
+                st.session_state.rewritten_text = None
+                if "rewritten_editor" in st.session_state:
+                    del st.session_state["rewritten_editor"]
                 st.rerun()
         with col_download:
             st.download_button(
                 label="DOWNLOAD REWRITE",
-                data=format_text_for_download(rewritten_edit),
+                data=rewritten_edit,
                 file_name=f"{final_filename}_rewrite.txt",
                 mime="text/plain",
                 key="download_rewrite"
             )
+        with col_clear:
+            if st.button("結果をクリア", key="clear_rewrite"):
+                st.session_state.rewritten_text = None
+                if "rewritten_editor" in st.session_state:
+                    del st.session_state["rewritten_editor"]
+                st.rerun()
 
     elif st.session_state.rewrite_variations:
         st.subheader("書き直し結果（複数パターン）")
 
         variations = st.session_state.rewrite_variations
+        num_vars = len(variations)
 
-        for i, var in enumerate(variations):
-            st.markdown(f'<div class="variation-card"><div class="variation-label">パターン {i + 1}</div><div class="variation-text">{var}</div></div>', unsafe_allow_html=True)
-
-            col_select, col_dl = st.columns([1, 1])
-            with col_select:
+        # 横並びで表示
+        cols = st.columns(num_vars)
+        for i, (col, var) in enumerate(zip(cols, variations)):
+            with col:
+                st.markdown(f"**パターン {i + 1}**")
+                st.text_area(
+                    f"パターン {i + 1}",
+                    value=var,
+                    height=500,
+                    key=f"var_editor_{i}",
+                    label_visibility="collapsed"
+                )
                 if st.button(f"パターン {i + 1} を採用", key=f"select_var_{i}"):
+                    selected_var = st.session_state.get(f"var_editor_{i}", var)
                     st.session_state.selected_variation = i
-                    st.session_state.rewritten_text = var
+                    st.session_state.adopted_scenario = selected_var
+                    st.session_state.rewritten_text = selected_var
                     st.session_state.rewrite_variations = None
-                    st.session_state.text_editor = var
-                    st.session_state.formatted_text = var
-                    st.success(f"パターン {i + 1} を採用しました!")
+                    st.session_state.text_editor = selected_var
+                    st.session_state.formatted_text = selected_var
                     st.rerun()
-            with col_dl:
                 st.download_button(
                     label=f"DOWNLOAD P{i + 1}",
-                    data=format_text_for_download(var),
+                    data=var,
                     file_name=f"{final_filename}_pattern{i + 1}.txt",
                     mime="text/plain",
                     key=f"download_var_{i}"
                 )
+
+    # 採用済みシナリオのダウンロード（常に表示）
+    if st.session_state.adopted_scenario:
+        st.markdown("---")
+        st.subheader("採用済みシナリオ")
+        st.download_button(
+            label="DOWNLOAD SCENARIO",
+            data=st.session_state.adopted_scenario,
+            file_name=f"{final_filename}_scenario.txt",
+            mime="text/plain",
+            key="download_adopted_scenario"
+        )
 
     # ===========================================
     # セクション6: タイトル・紹介文・ハッシュタグ生成
@@ -942,16 +1023,19 @@ if st.session_state.formatted_text:
         st.header("7. まとめてダウンロード")
 
         # 全テキストをまとめる
-        full_text = "【整形テキスト】\n" + formatted_main_text
+        full_parts = []
 
-        # 書き直しテキストがあれば追加
-        if st.session_state.rewritten_text:
-            full_text += "\n\n【書き直しテキスト】\n" + st.session_state.rewritten_text
+        # 採用済みシナリオ
+        if st.session_state.adopted_scenario:
+            full_parts.append("【シナリオ】\n" + st.session_state.adopted_scenario)
 
-        full_text += "\n\n" + st.session_state.sns_content_editor
+        # SNSコンテンツ
+        full_parts.append("【SNSコンテンツ】\n" + st.session_state.sns_content_editor)
+
+        full_text = "\n\n" + ("=" * 50) + "\n\n".join(full_parts)
 
         st.download_button(
-            label="DOWNLOAD ALL TEXT",
+            label="DOWNLOAD ALL",
             data=full_text,
             file_name=f"{final_filename}_full.txt",
             mime="text/plain",
